@@ -8,7 +8,7 @@
 
 ## ✨ 功能特性
 
-- 🎨 **现代化 UI** - 粉色主题 + 玻璃拟态效果 + 动漫背景
+- 🎨 **现代化 UI** - 深色科技风 + 网格背景 + 高信息密度卡片
 - 💰 **实时余额监控** - 显示每月免费额度剩余（$X.XX / $5.00）
 - ***项目费用追踪** - 每个项目的实时费用统计
 - ✏️ **项目快速改名** - 点击铅笔图标即可重命名项目
@@ -19,9 +19,10 @@
 - 🎚️ **透明度调节** - 可调节卡片透明度（0-100%）
 - 📱 **响应式设计** - 完美适配各种屏幕尺寸
 - ***密码保护** - 管理员密码验证，保护账号安全
-- 💾 **服务器存储** - 账号数据存储在服务器，多设备自动同步
+- 💾 **多后端持久化存储** - 支持 `file / WebDAV / S3 / MySQL`
 - ⏸️ **服务控制** - 暂停、启动、重启服务
 - 📋 **查看日志** - 实时查看服务运行日志
+- ❤️ **稳定性增强** - 请求重试、连接复用、并发控制、健康检查
 
 ## 📦 快速开始
 
@@ -99,7 +100,7 @@ npm start
 - **后端**：Node.js + Express
 - **前端**：Vue.js 3 (CDN)
 - **API**：Zeabur GraphQL API
-- **样式**：原生 CSS（玻璃拟态效果）
+- **样式**：原生 CSS（深色科技风）
 
 ## 📁 项目结构
 
@@ -110,6 +111,7 @@ zeabur-monitor/
 │   ├── bg.png          # 背景图片
 │   └── favicon.png     # 网站图标
 ├── server.js           # 后端服务
+├── storage.js          # 配置存储适配层（file/webdav/s3/mysql）
 ├── package.json        # 项目配置
 ├── .env.example        # 环境变量示例
 ├── .gitignore          # Git 忽略规则
@@ -122,11 +124,11 @@ zeabur-monitor/
 
 ### 密码保护
 - 首次使用需要设置管理员密码（至少 6 位）
-- 密码存储在服务器的 `password.json` 文件中
+- 密码存储在统一配置后端（`config.json` / WebDAV / S3 / MySQL）
 - 登录后 10 天内自动保持登录状态
 
 ### API Token 安全
-- Token 存储在服务器的 `accounts.json` 文件中
+- Token 存储在统一配置后端（加密开启时密文存储）
 - 输入时自动打码显示（`●●●●●●`）
 - 不会暴露在前端代码或浏览器中
 
@@ -135,19 +137,20 @@ zeabur-monitor/
 - `.env` - 环境变量
 - `accounts.json` - 账号数据
 - `password.json` - 管理员密码
+- `config.json` - 新版统一配置数据
 
 这些文件已在 `.gitignore` 中配置。
 
 ## 🎨 自定义
 
-### 更换背景图片
-替换 `public/bg.png` 为你喜欢的图片
+### 背景与主题
+当前默认是纯 CSS 科技背景，无需图片即可运行。
 
 ### 调整透明度
 使用页面上的透明度滑块调节
 
 ### 修改主题色
-在 `public/index.html` 中搜索 `#f696c6` 并替换为你喜欢的颜色
+在 `public/index.html` 中搜索 `--accent` 并替换为你喜欢的颜色
 
 ## 🔄 多设备同步
 
@@ -165,6 +168,42 @@ zeabur-monitor/
 ```env
 PORT=3000
 ACCOUNTS=账号1:token1,账号2:token2
+CONFIG_BACKEND=file
+# CONFIG_FILE_PATH=/app/data/config.json
+```
+
+### 配置存储后端示例
+
+`file`（默认）：
+```env
+CONFIG_BACKEND=file
+CONFIG_FILE_PATH=/app/data/config.json
+```
+
+`webdav`：
+```env
+CONFIG_BACKEND=webdav
+WEBDAV_URL=https://dav.example.com/zmon/config.json
+WEBDAV_USERNAME=your_user
+WEBDAV_PASSWORD=your_password
+```
+
+`s3`（或兼容对象存储）：
+```env
+CONFIG_BACKEND=s3
+S3_ENDPOINT=https://<endpoint>
+S3_REGION=auto
+S3_BUCKET=your-bucket
+S3_KEY=zmon/config.json
+S3_ACCESS_KEY_ID=xxx
+S3_SECRET_ACCESS_KEY=xxx
+```
+
+`mysql`：
+```env
+CONFIG_BACKEND=mysql
+MYSQL_URL=mysql://user:pass@host:3306/dbname
+# 或使用 MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE
 ```
 
 ### API 端点
@@ -183,6 +222,8 @@ ACCOUNTS=账号1:token1,账号2:token2
 - `POST /api/service/pause` - 暂停服务
 - `POST /api/service/restart` - 重启服务
 - `POST /api/service/logs` - 获取服务日志
+- `GET /api/health` - 服务健康检查
+- `GET /api/storage/status` - 存储后端状态（需登录）
 
 ## 🤝 贡献
 

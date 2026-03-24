@@ -4,7 +4,9 @@ const cors = require('cors');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { encryptData, decryptData } = require('./crypto-utils');
+const { createConfigStoreFromEnv, DEFAULT_CONFIG, normalizeConfig } = require('./storage');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,17 +14,34 @@ const PORT = process.env.PORT || 3000;
 // 加密密钥（用于加密存储的 API Token）
 const ACCOUNTS_SECRET = process.env.ACCOUNTS_SECRET;
 const ENCRYPTION_ENABLED = ACCOUNTS_SECRET && ACCOUNTS_SECRET.length === 64;
+const CONFIG_CACHE_TTL_MS = Number(process.env.CONFIG_CACHE_TTL_MS || 5000);
+const GRAPHQL_TIMEOUT_MS = Number(process.env.GRAPHQL_TIMEOUT_MS || 10000);
+const GRAPHQL_RETRY_MAX = Number(process.env.GRAPHQL_RETRY_MAX || 2);
+const ACCOUNT_FETCH_CONCURRENCY = Number(process.env.ACCOUNT_FETCH_CONCURRENCY || 4);
+const LEGACY_ACCOUNTS_FILE = path.join(__dirname, 'accounts.json');
+const LEGACY_PASSWORD_FILE = path.join(__dirname, 'password.json');
+const ZEABUR_KEEP_ALIVE_AGENT = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 60000
+});
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 // Session管理 - 存储在内存中,重启服务器后清空
 const activeSessions = new Map(); // { token: { createdAt: timestamp } }
 const SESSION_DURATION = 10 * 24 * 60 * 60 * 1000; // 10天
+const configStore = createConfigStoreFromEnv();
+let configCache = {
+  value: normalizeConfig(DEFAULT_CONFIG),
+  loadedAt: 0
+};
 
 // 生成随机token
 function generateToken() {
-  return 'session_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+  return 'session_' + crypto.randomBytes(24).toString('hex');
 }
 
 // 清理过期session
@@ -36,150 +55,260 @@ function cleanExpiredSessions() {
 }
 
 // 每小时清理一次过期session
-setInterval(cleanExpiredSessions, 60 * 60 * 1000);
+setInterval(cleanExpiredSessions, 60 * 60 * 1000).unref();
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseJsonSafe(raw, fallback) {
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function decodeStoredAccounts(accounts) {
+  if (!Array.isArray(accounts)) {
+    return [];
+  }
+
+  return accounts.map(account => {
+    if (!account || typeof account !== 'object') {
+      return null;
+    }
+
+    if (ENCRYPTION_ENABLED && account.encryptedToken && !account.token) {
+      try {
+        const token = decryptData(account.encryptedToken, ACCOUNTS_SECRET);
+        return { ...account, token, encryptedToken: undefined };
+      } catch (error) {
+        console.error(`❌ 解密账号 [${account.name || '未知'}] Token 失败:`, error.message);
+        return account;
+      }
+    }
+
+    return account;
+  }).filter(Boolean);
+}
+
+function encodeAccountsForStorage(accounts) {
+  if (!Array.isArray(accounts)) {
+    return [];
+  }
+
+  if (!ENCRYPTION_ENABLED) {
+    return accounts.map(account => ({ ...account }));
+  }
+
+  const encrypted = accounts.map(account => {
+    if (account && account.token) {
+      try {
+        const encryptedToken = encryptData(account.token, ACCOUNTS_SECRET);
+        const { token, ...rest } = account;
+        return { ...rest, encryptedToken };
+      } catch (error) {
+        console.error(`❌ 加密账号 [${account.name || '未知'}] Token 失败:`, error.message);
+        return account;
+      }
+    }
+    return account;
+  });
+  console.log('🔐 账号 Token 已加密存储');
+  return encrypted;
+}
+
+function readLegacyAccounts() {
+  try {
+    if (!fs.existsSync(LEGACY_ACCOUNTS_FILE)) {
+      return [];
+    }
+    const data = fs.readFileSync(LEGACY_ACCOUNTS_FILE, 'utf8');
+    const accounts = parseJsonSafe(data, []);
+    return decodeStoredAccounts(accounts);
+  } catch (error) {
+    console.error('❌ 读取旧版账号文件失败:', error.message);
+    return [];
+  }
+}
+
+function readLegacyPassword() {
+  try {
+    if (!fs.existsSync(LEGACY_PASSWORD_FILE)) {
+      return null;
+    }
+    const data = fs.readFileSync(LEGACY_PASSWORD_FILE, 'utf8');
+    const parsed = parseJsonSafe(data, {});
+    return typeof parsed.password === 'string' && parsed.password.length > 0 ? parsed.password : null;
+  } catch (error) {
+    console.error('❌ 读取旧版密码文件失败:', error.message);
+    return null;
+  }
+}
+
+function updateConfigCache(config) {
+  configCache = {
+    value: normalizeConfig(config),
+    loadedAt: Date.now()
+  };
+}
+
+async function loadRuntimeConfig(options = {}) {
+  const force = Boolean(options.force);
+  const now = Date.now();
+  if (!force && now - configCache.loadedAt < CONFIG_CACHE_TTL_MS) {
+    return configCache.value;
+  }
+
+  const loaded = await configStore.load();
+  const normalized = normalizeConfig(loaded || DEFAULT_CONFIG);
+  updateConfigCache(normalized);
+  return normalized;
+}
+
+async function saveRuntimeConfig(config) {
+  const normalized = normalizeConfig(config);
+  await configStore.save(normalized);
+  updateConfigCache(normalized);
+}
+
+async function bootstrapConfig() {
+  let existing;
+  try {
+    existing = await configStore.load();
+  } catch (error) {
+    throw new Error(`初始化配置失败: ${error.message}`);
+  }
+
+  if (existing) {
+    updateConfigCache(existing);
+    return;
+  }
+
+  const legacyAccounts = readLegacyAccounts();
+  const legacyPassword = readLegacyPassword();
+  const initial = normalizeConfig({
+    ...DEFAULT_CONFIG,
+    accounts: encodeAccountsForStorage(legacyAccounts),
+    adminPassword: legacyPassword
+  });
+
+  await saveRuntimeConfig(initial);
+  if (legacyAccounts.length > 0 || legacyPassword) {
+    console.log('♻️ 已完成旧版配置迁移到新存储后端');
+  }
+}
+
+async function loadServerAccounts() {
+  const config = await loadRuntimeConfig();
+  return decodeStoredAccounts(config.accounts);
+}
+
+async function saveServerAccounts(accounts) {
+  const config = await loadRuntimeConfig();
+  config.accounts = encodeAccountsForStorage(accounts);
+  await saveRuntimeConfig(config);
+  return true;
+}
+
+async function loadAdminPassword() {
+  const config = await loadRuntimeConfig();
+  return config.adminPassword || null;
+}
+
+async function saveAdminPassword(password) {
+  const config = await loadRuntimeConfig();
+  config.adminPassword = password;
+  await saveRuntimeConfig(config);
+  return true;
+}
 
 // 密码验证中间件
-function requireAuth(req, res, next) {
-  const password = req.headers['x-admin-password'];
-  const sessionToken = req.headers['x-session-token'];
-  const savedPassword = loadAdminPassword();
-  
-  if (!savedPassword) {
-    // 如果没有设置密码，允许访问（首次设置）
-    next();
-  } else if (sessionToken && activeSessions.has(sessionToken)) {
-    // 检查session是否有效
-    const session = activeSessions.get(sessionToken);
-    if (Date.now() - session.createdAt < SESSION_DURATION) {
+async function requireAuth(req, res, next) {
+  try {
+    const password = req.headers['x-admin-password'];
+    const sessionToken = req.headers['x-session-token'];
+    const savedPassword = await loadAdminPassword();
+
+    if (!savedPassword) {
       next();
-    } else {
+      return;
+    }
+
+    if (sessionToken && activeSessions.has(sessionToken)) {
+      const session = activeSessions.get(sessionToken);
+      if (Date.now() - session.createdAt < SESSION_DURATION) {
+        next();
+        return;
+      }
       activeSessions.delete(sessionToken);
       res.status(401).json({ error: 'Session已过期，请重新登录' });
+      return;
     }
-  } else if (password === savedPassword) {
-    next();
-  } else {
+
+    if (password === savedPassword) {
+      next();
+      return;
+    }
+
     res.status(401).json({ error: '密码错误或Session无效' });
+  } catch (error) {
+    next(error);
   }
 }
 
 app.use(express.static('public'));
 
-// 数据文件路径
-const ACCOUNTS_FILE = path.join(__dirname, 'accounts.json');
-const PASSWORD_FILE = path.join(__dirname, 'password.json');
-
-// 读取服务器存储的账号
-function loadServerAccounts() {
-  try {
-    if (fs.existsSync(ACCOUNTS_FILE)) {
-      const data = fs.readFileSync(ACCOUNTS_FILE, 'utf8');
-      const accounts = JSON.parse(data);
-      
-      // 如果启用了加密,解密 Token
-      if (ENCRYPTION_ENABLED) {
-        return accounts.map(account => {
-          // 如果账号有加密的 Token,解密它
-          if (account.encryptedToken) {
-            try {
-              const token = decryptData(account.encryptedToken, ACCOUNTS_SECRET);
-              return { ...account, token, encryptedToken: undefined };
-            } catch (e) {
-              console.error(`❌ 解密账号 [${account.name}] 的 Token 失败:`, e.message);
-              return account;
-            }
-          }
-          return account;
-        });
-      }
-      
-      return accounts;
-    }
-  } catch (e) {
-    console.error('❌ 读取账号文件失败:', e.message);
-  }
-  return [];
-}
-
-// 保存账号到服务器
-function saveServerAccounts(accounts) {
-  try {
-    let accountsToSave = accounts;
-    
-    // 如果启用了加密,加密 Token
-    if (ENCRYPTION_ENABLED) {
-      accountsToSave = accounts.map(account => {
-        if (account.token) {
-          try {
-            const encryptedToken = encryptData(account.token, ACCOUNTS_SECRET);
-            // 保存时移除明文 token,只保存加密后的
-            const { token, ...rest } = account;
-            return { ...rest, encryptedToken };
-          } catch (e) {
-            console.error(`❌ 加密账号 [${account.name}] 的 Token 失败:`, e.message);
-            return account;
-          }
-        }
-        return account;
-      });
-      console.log('🔐 账号 Token 已加密存储');
-    }
-    
-    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accountsToSave, null, 2), 'utf8');
-    return true;
-  } catch (e) {
-    console.error('❌ 保存账号文件失败:', e.message);
+function isRetryableError(error) {
+  if (!error || !error.message) {
     return false;
   }
+  const message = error.message.toLowerCase();
+  return [
+    'timeout',
+    'socket hang up',
+    'econnreset',
+    'enotfound',
+    'eai_again',
+    'etimedout',
+    'econnrefused',
+    'zeabur api 429',
+    'bad gateway',
+    'service unavailable',
+    'gateway timeout'
+  ].some(keyword => message.includes(keyword));
 }
 
-// 读取管理员密码
-function loadAdminPassword() {
-  try {
-    if (fs.existsSync(PASSWORD_FILE)) {
-      const data = fs.readFileSync(PASSWORD_FILE, 'utf8');
-      return JSON.parse(data).password;
-    }
-  } catch (e) {
-    console.error('❌ 读取密码文件失败:', e.message);
-  }
-  return null;
-}
-
-// 保存管理员密码
-function saveAdminPassword(password) {
-  try {
-    fs.writeFileSync(PASSWORD_FILE, JSON.stringify({ password }, null, 2), 'utf8');
-    return true;
-  } catch (e) {
-    console.error('❌ 保存密码文件失败:', e.message);
-    return false;
-  }
-}
-
-// Zeabur GraphQL 查询
-async function queryZeabur(token, query) {
+async function requestZeaburGraphQL(token, payload) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify({ query });
+    const data = JSON.stringify(payload);
     const options = {
       hostname: 'api.zeabur.com',
       path: '/graphql',
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(data)
       },
-      timeout: 10000
+      timeout: GRAPHQL_TIMEOUT_MS,
+      agent: ZEABUR_KEEP_ALIVE_AGENT
     };
 
-    const req = https.request(options, (res) => {
+    const req = https.request(options, (response) => {
       let body = '';
-      res.on('data', (chunk) => body += chunk);
-      res.on('end', () => {
+      response.on('data', (chunk) => {
+        body += chunk;
+      });
+      response.on('end', () => {
+        if (response.statusCode >= 500) {
+          reject(new Error(`Zeabur API ${response.statusCode}`));
+          return;
+        }
         try {
           resolve(JSON.parse(body));
-        } catch (e) {
+        } catch (_) {
           reject(new Error('Invalid JSON response'));
         }
       });
@@ -187,12 +316,31 @@ async function queryZeabur(token, query) {
 
     req.on('error', reject);
     req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
+      req.destroy(new Error('Request timeout'));
     });
     req.write(data);
     req.end();
   });
+}
+
+async function requestZeaburWithRetry(token, payload) {
+  let lastError;
+  for (let attempt = 0; attempt <= GRAPHQL_RETRY_MAX; attempt += 1) {
+    try {
+      return await requestZeaburGraphQL(token, payload);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= GRAPHQL_RETRY_MAX || !isRetryableError(error)) {
+        throw error;
+      }
+      await sleep(300 * (attempt + 1));
+    }
+  }
+  throw lastError || new Error('Zeabur 请求失败');
+}
+
+async function queryZeabur(token, query) {
+  return requestZeaburWithRetry(token, { query });
 }
 
 // 获取用户信息和项目
@@ -313,65 +461,50 @@ async function fetchUsageData(token, userID, projects = []) {
     }`
   };
   
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(usageQuery);
-    const options = {
-      hostname: 'api.zeabur.com',
-      path: '/graphql',
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data)
-      },
-      timeout: 10000
-    };
+  const result = await requestZeaburWithRetry(token, usageQuery);
+  const usages = result.data?.usages?.data || [];
 
-    const req = https.request(options, (res) => {
-      let body = '';
-      res.on('data', (chunk) => body += chunk);
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(body);
-          const usages = result.data?.usages?.data || [];
-          
-          // 计算每个项目的总费用
-          const projectCosts = {};
-          let totalUsage = 0;
-          
-          usages.forEach(project => {
-            const projectTotal = project.usageOfEntity.reduce((a, b) => a + b, 0);
-            // 单个项目显示：向上取整到 $0.01（与 Zeabur 官方一致）
-            const displayCost = projectTotal > 0 ? Math.ceil(projectTotal * 100) / 100 : 0;
-            projectCosts[project.id] = displayCost;
-            // 总用量计算：使用原始费用（不取整，保证总余额准确）
-            totalUsage += projectTotal;
-          });
-          
-          resolve({
-            projectCosts,
-            totalUsage,
-            freeQuotaRemaining: 5 - totalUsage, // 免费额度 $5
-            freeQuotaLimit: 5
-          });
-        } catch (e) {
-          reject(new Error('Invalid JSON response'));
-        }
-      });
-    });
+  const projectCosts = {};
+  let totalUsage = 0;
 
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-    req.write(data);
-    req.end();
+  usages.forEach(project => {
+    const projectTotal = project.usageOfEntity.reduce((a, b) => a + b, 0);
+    const displayCost = projectTotal > 0 ? Math.ceil(projectTotal * 100) / 100 : 0;
+    projectCosts[project.id] = displayCost;
+    totalUsage += projectTotal;
   });
+
+  return {
+    projectCosts,
+    totalUsage,
+    freeQuotaRemaining: 5 - totalUsage,
+    freeQuotaLimit: 5
+  };
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  const maxWorkers = Math.max(1, Math.min(limit, items.length));
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function runWorker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: maxWorkers }, runWorker));
+  return results;
 }
 
 // 临时账号API - 获取账号信息
-app.post('/api/temp-accounts', requireAuth, express.json(), async (req, res) => {
+app.post('/api/temp-accounts', requireAuth, async (req, res) => {
   const { accounts } = req.body;
   
   console.log('📥 收到账号请求:', accounts?.length, '个账号');
@@ -380,7 +513,7 @@ app.post('/api/temp-accounts', requireAuth, express.json(), async (req, res) => 
     return res.status(400).json({ error: '无效的账号列表' });
   }
   
-  const results = await Promise.all(accounts.map(async (account) => {
+  const results = await mapWithConcurrency(accounts, ACCOUNT_FETCH_CONCURRENCY, async (account) => {
     try {
       console.log(`🔍 正在获取账号 [${account.name}] 的数据...`);
       const { user, projects, aihub } = await fetchAccountData(account.token);
@@ -419,7 +552,7 @@ app.post('/api/temp-accounts', requireAuth, express.json(), async (req, res) => 
         error: error.message
       };
     }
-  }));
+  });
   
   console.log('📤 返回结果:', results.length, '个账号');
   res.json(results);
@@ -435,7 +568,7 @@ app.post('/api/temp-projects', requireAuth, express.json(), async (req, res) => 
     return res.status(400).json({ error: '无效的账号列表' });
   }
   
-  const results = await Promise.all(accounts.map(async (account) => {
+  const results = await mapWithConcurrency(accounts, ACCOUNT_FETCH_CONCURRENCY, async (account) => {
     try {
       console.log(`🔍 正在获取账号 [${account.name}] 的项目...`);
       const { user, projects } = await fetchAccountData(account.token);
@@ -481,7 +614,7 @@ app.post('/api/temp-projects', requireAuth, express.json(), async (req, res) => 
         error: error.message
       };
     }
-  }));
+  });
   
   console.log('📤 返回项目结果');
   res.json(results);
@@ -534,7 +667,6 @@ function getEnvAccounts() {
 // 检查是否已设置密码
 // 检查加密密钥是否已设置
 app.get('/api/check-encryption', (req, res) => {
-  const crypto = require('crypto');
   // 生成一个随机密钥供用户使用
   const suggestedSecret = crypto.randomBytes(32).toString('hex');
   
@@ -544,103 +676,146 @@ app.get('/api/check-encryption', (req, res) => {
   });
 });
 
-app.get('/api/check-password', (req, res) => {
-  const savedPassword = loadAdminPassword();
-  res.json({ hasPassword: !!savedPassword });
+app.get('/api/check-password', async (req, res, next) => {
+  try {
+    const savedPassword = await loadAdminPassword();
+    res.json({ hasPassword: !!savedPassword });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/storage/status', requireAuth, async (req, res, next) => {
+  try {
+    const status = await configStore.status();
+    res.json({
+      ...status,
+      backendConfigured: (process.env.CONFIG_BACKEND || 'file').toLowerCase()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/health', async (req, res) => {
+  try {
+    const storage = await configStore.status();
+    res.json({
+      ok: storage.ok,
+      uptimeSeconds: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+      storage,
+      memory: process.memoryUsage()
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  }
 });
 
 // 设置管理员密码（首次）
-app.post('/api/set-password', (req, res) => {
-  const { password } = req.body;
-  const savedPassword = loadAdminPassword();
-  
-  if (savedPassword) {
-    return res.status(400).json({ error: '密码已设置，无法重复设置' });
-  }
-  
-  if (!password || password.length < 6) {
-    return res.status(400).json({ error: '密码长度至少6位' });
-  }
-  
-  if (saveAdminPassword(password)) {
+app.post('/api/set-password', async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    const savedPassword = await loadAdminPassword();
+
+    if (savedPassword) {
+      return res.status(400).json({ error: '密码已设置，无法重复设置' });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: '密码长度至少6位' });
+    }
+
+    await saveAdminPassword(password);
     console.log('✅ 管理员密码已设置');
     res.json({ success: true });
-  } else {
-    res.status(500).json({ error: '保存密码失败' });
+  } catch (error) {
+    next(error);
   }
 });
 
 // 验证密码
-app.post('/api/verify-password', (req, res) => {
-  const { password } = req.body;
-  const savedPassword = loadAdminPassword();
-  
-  if (!savedPassword) {
-    return res.status(400).json({ success: false, error: '请先设置密码' });
-  }
-  
-  if (password === savedPassword) {
-    // 生成新的session token
-    const sessionToken = generateToken();
-    activeSessions.set(sessionToken, { createdAt: Date.now() });
-    console.log(`✅ 用户登录成功，生成Session: ${sessionToken.substring(0, 20)}...`);
-    res.json({ success: true, sessionToken });
-  } else {
-    res.status(401).json({ success: false, error: '密码错误' });
+app.post('/api/verify-password', async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    const savedPassword = await loadAdminPassword();
+
+    if (!savedPassword) {
+      return res.status(400).json({ success: false, error: '请先设置密码' });
+    }
+
+    if (password === savedPassword) {
+      const sessionToken = generateToken();
+      activeSessions.set(sessionToken, { createdAt: Date.now() });
+      console.log(`✅ 用户登录成功，生成Session: ${sessionToken.substring(0, 20)}...`);
+      res.json({ success: true, sessionToken });
+    } else {
+      res.status(401).json({ success: false, error: '密码错误' });
+    }
+  } catch (error) {
+    next(error);
   }
 });
 
 // 获取所有账号（服务器存储 + 环境变量）
-app.get('/api/server-accounts', requireAuth, async (req, res) => {
-  const serverAccounts = loadServerAccounts();
-  const envAccounts = getEnvAccounts();
-  
-  // 合并账号，环境变量账号优先
-  const allAccounts = [...envAccounts, ...serverAccounts];
-  console.log(`📋 返回 ${allAccounts.length} 个账号 (环境变量: ${envAccounts.length}, 服务器: ${serverAccounts.length})`);
-  res.json(allAccounts);
+app.get('/api/server-accounts', requireAuth, async (req, res, next) => {
+  try {
+    const serverAccounts = await loadServerAccounts();
+    const envAccounts = getEnvAccounts();
+
+    const allAccounts = [...envAccounts, ...serverAccounts];
+    console.log(`📋 返回 ${allAccounts.length} 个账号 (环境变量: ${envAccounts.length}, 服务器: ${serverAccounts.length})`);
+    res.json(allAccounts);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // 保存账号到服务器
-app.post('/api/server-accounts', requireAuth, async (req, res) => {
-  const { accounts } = req.body;
-  
-  if (!accounts || !Array.isArray(accounts)) {
-    return res.status(400).json({ error: '无效的账号列表' });
-  }
-  
-  if (saveServerAccounts(accounts)) {
+app.post('/api/server-accounts', requireAuth, async (req, res, next) => {
+  try {
+    const { accounts } = req.body;
+
+    if (!accounts || !Array.isArray(accounts)) {
+      return res.status(400).json({ error: '无效的账号列表' });
+    }
+
+    await saveServerAccounts(accounts);
     console.log(`✅ 保存 ${accounts.length} 个账号到服务器`);
     res.json({ success: true, message: '账号已保存到服务器' });
-  } else {
-    res.status(500).json({ error: '保存失败' });
+  } catch (error) {
+    next(error);
   }
 });
 
 // 删除服务器账号
-app.delete('/api/server-accounts/:index', requireAuth, async (req, res) => {
-  const index = parseInt(req.params.index);
-  const accounts = loadServerAccounts();
-  
-  if (index >= 0 && index < accounts.length) {
-    const removed = accounts.splice(index, 1);
-    if (saveServerAccounts(accounts)) {
+app.delete('/api/server-accounts/:index', requireAuth, async (req, res, next) => {
+  try {
+    const index = Number.parseInt(req.params.index, 10);
+    const accounts = await loadServerAccounts();
+
+    if (index >= 0 && index < accounts.length) {
+      const removed = accounts.splice(index, 1);
+      await saveServerAccounts(accounts);
       console.log(`🗑️ 删除账号: ${removed[0].name}`);
       res.json({ success: true, message: '账号已删除' });
     } else {
-      res.status(500).json({ error: '删除失败' });
+      res.status(404).json({ error: '账号不存在' });
     }
-  } else {
-    res.status(404).json({ error: '账号不存在' });
+  } catch (error) {
+    next(error);
   }
 });
 
-// 服务器配置的账号API（兼容旧版本）
-app.get('/api/accounts', async (req, res) => {
+// 服务器配置的账号API（兼容旧版本，用于 session 校验）
+app.get('/api/accounts', requireAuth, async (req, res) => {
   res.json([]);
 });
 
-app.get('/api/projects', async (req, res) => {
+app.get('/api/projects', requireAuth, async (req, res) => {
   res.json([]);
 });
 
@@ -746,9 +921,8 @@ app.post('/api/project/rename', requireAuth, async (req, res) => {
   }
   
   try {
-    // 从服务器存储中获取账号token
-    const serverAccounts = loadServerAccounts();
-    const account = serverAccounts.find(acc => (acc.id || acc.name) === accountId);
+    const allAccounts = [...getEnvAccounts(), ...(await loadServerAccounts())];
+    const account = allAccounts.find(acc => (acc.id || acc.name) === accountId);
     
     if (!account || !account.token) {
       return res.status(404).json({ error: '未找到账号或token' });
@@ -786,7 +960,8 @@ app.get('/api/latest-version', async (req, res) => {
       hostname: 'raw.githubusercontent.com',
       path: '/jiujiu532/zeabur-monitor/main/package.json',
       method: 'GET',
-      timeout: 5000
+      timeout: 5000,
+      agent: ZEABUR_KEEP_ALIVE_AGENT
     };
 
     const request = https.request(options, (response) => {
@@ -817,31 +992,61 @@ app.get('/api/latest-version', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✨ Zeabur Monitor 运行在 http://0.0.0.0:${PORT}`);
-  
-  // 显示加密状态
-  if (ENCRYPTION_ENABLED) {
-    console.log(`🔐 Token 加密存储: 已启用 (AES-256-GCM)`);
-  } else {
-    console.log(`⚠️  Token 加密存储: 未启用 (建议设置 ACCOUNTS_SECRET 环境变量)`);
+app.use((error, req, res, next) => {
+  console.error('❌ 请求处理失败:', error.message);
+  if (res.headersSent) {
+    return next(error);
   }
-  
-  const envAccounts = getEnvAccounts();
-  const serverAccounts = loadServerAccounts();
-  const totalAccounts = envAccounts.length + serverAccounts.length;
-  
-  if (totalAccounts > 0) {
-    console.log(`📋 已加载 ${totalAccounts} 个账号`);
-    if (envAccounts.length > 0) {
-      console.log(`   环境变量: ${envAccounts.length} 个`);
-      envAccounts.forEach(acc => console.log(`     - ${acc.name}`));
+  res.status(500).json({ error: '服务器内部错误', detail: error.message });
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('❌ 未处理 Promise 异常:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ 未捕获异常:', error);
+});
+
+async function startServer() {
+  await bootstrapConfig();
+
+  app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`✨ Zeabur Monitor 运行在 http://0.0.0.0:${PORT}`);
+
+    if (ENCRYPTION_ENABLED) {
+      console.log('🔐 Token 加密存储: 已启用 (AES-256-GCM)');
+    } else {
+      console.log('⚠️  Token 加密存储: 未启用 (建议设置 ACCOUNTS_SECRET 环境变量)');
     }
-    if (serverAccounts.length > 0) {
-      console.log(`   服务器存储: ${serverAccounts.length} 个`);
-      serverAccounts.forEach(acc => console.log(`     - ${acc.name}`));
+
+    const storeStatus = await configStore.status();
+    console.log(`💾 配置存储后端: ${(process.env.CONFIG_BACKEND || 'file').toLowerCase()} (${storeStatus.ok ? '可用' : '异常'})`);
+    if (!storeStatus.ok) {
+      console.log(`⚠️ 存储后端状态: ${storeStatus.detail}`);
     }
-  } else {
-    console.log(`📊 准备就绪，等待添加账号...`);
-  }
+
+    const envAccounts = getEnvAccounts();
+    const serverAccounts = await loadServerAccounts();
+    const totalAccounts = envAccounts.length + serverAccounts.length;
+
+    if (totalAccounts > 0) {
+      console.log(`📋 已加载 ${totalAccounts} 个账号`);
+      if (envAccounts.length > 0) {
+        console.log(`   环境变量: ${envAccounts.length} 个`);
+        envAccounts.forEach(acc => console.log(`     - ${acc.name}`));
+      }
+      if (serverAccounts.length > 0) {
+        console.log(`   存储后端: ${serverAccounts.length} 个`);
+        serverAccounts.forEach(acc => console.log(`     - ${acc.name}`));
+      }
+    } else {
+      console.log('📊 准备就绪，等待添加账号...');
+    }
+  });
+}
+
+startServer().catch((error) => {
+  console.error('❌ 服务启动失败:', error.message);
+  process.exit(1);
 });

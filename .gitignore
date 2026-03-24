@@ -10,6 +10,10 @@ accounts.json
 # 管理员密码文件
 password.json
 
+# 新版统一配置文件
+config.json
+config.json.tmp
+
 # 日志
 *.log
 npm-debug.log*

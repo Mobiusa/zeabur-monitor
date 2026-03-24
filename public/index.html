@@ -10,6 +10,20 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
       --card-opacity: 0.3;
+      --service-opacity: 0.35;
+      --blur-amount: 16px;
+      --blur-amount-small: 12px;
+      --blur-amount-tiny: 8px;
+      --saturate-amount: 120%;
+      --shadow-opacity: 0.35;
+      --shadow-opacity-light: 0.2;
+      --border-opacity: 0.45;
+      --border-opacity-light: 0.35;
+      --border-opacity-strong: 0.5;
+      --accent: #27d3ff;
+      --accent-strong: #0f7ff2;
+      --text-main: #e8f7ff;
+      --text-soft: #9cb6ca;
     }
     @keyframes gradient {
       0% { background-position: 0% 50%; }
@@ -17,11 +31,15 @@
       100% { background-position: 0% 50%; }
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: url('bg.png') center/cover fixed;
+      font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(39, 211, 255, 0.16), transparent 36%),
+        radial-gradient(circle at 90% 20%, rgba(15, 127, 242, 0.18), transparent 30%),
+        linear-gradient(145deg, #050c16 0%, #081321 45%, #0b1d32 100%);
       position: relative;
       min-height: 100vh;
       padding: 20px;
+      color: var(--text-main);
     }
     body::before {
       content: '';
@@ -30,8 +48,12 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(255, 255, 255, 0.05);
+      background:
+        linear-gradient(to right, rgba(125, 155, 183, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(125, 155, 183, 0.08) 1px, transparent 1px);
+      background-size: 28px 28px;
       z-index: 0;
+      pointer-events: none;
     }
     .container { 
       max-width: 1400px; 
@@ -40,23 +62,24 @@
       z-index: 1;
     }
     h1 {
-      color: white;
+      color: var(--text-main);
       margin-bottom: 30px;
-      font-size: 28px;
+      font-size: 30px;
       font-weight: 700;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      text-shadow: 0 6px 24px rgba(5, 12, 22, 0.75);
+      letter-spacing: 0.02em;
     }
     .refresh-btn {
-      background: linear-gradient(135deg, #f696c6 0%, #fbb6d8 100%);
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
       color: white;
-      border: 2px solid rgba(255,255,255,0.3);
+      border: 1px solid rgba(39, 211, 255, 0.45);
       padding: 10px 20px;
-      border-radius: 25px;
+      border-radius: 10px;
       cursor: pointer;
       font-size: 14px;
       font-weight: 600;
       transition: all 0.3s;
-      box-shadow: 0 4px 15px rgba(246,150,198,0.3);
+      box-shadow: 0 8px 24px rgba(15, 127, 242, 0.35);
     }
     .refresh-btn:hover { 
       transform: translateY(-2px);
@@ -78,14 +101,14 @@
       }
     }
     .account-card {
-      background: rgba(255,255,255,var(--card-opacity));
+      background: rgba(8, 22, 37, calc(0.45 + var(--card-opacity) * 0.45));
       backdrop-filter: blur(var(--blur-amount)) saturate(var(--saturate-amount));
       -webkit-backdrop-filter: blur(var(--blur-amount)) saturate(var(--saturate-amount));
       border-radius: 20px;
       padding: 16px;
       margin-bottom: 10px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, var(--shadow-opacity));
-      border: 1px solid rgba(255,255,255,var(--border-opacity));
+      border: 1px solid rgba(72, 133, 173, var(--border-opacity));
       transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, z-index 0s 0.2s;
       animation: fadeInUp 0.6s ease-out;
       will-change: transform;
@@ -95,7 +118,7 @@
     }
     .account-card:hover {
       transform: translate3d(0, -8px, 0) scale(1.02);
-      border-color: rgba(255,255,255,0.3);
+      border-color: rgba(39, 211, 255, 0.5);
       z-index: 10;
       transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, z-index 0s 0s;
     }
@@ -110,12 +133,12 @@
       transition: background 0.2s;
     }
     .account-header:hover {
-      background: rgba(255,255,255,0.1);
+      background: rgba(39, 211, 255, 0.08);
     }
     .account-name {
       font-size: 16px;
       font-weight: 600;
-      color: #333;
+      color: var(--text-main);
       line-height: 1.2;
     }
     .balance {
@@ -137,12 +160,12 @@
       100% { background-position: 1000px 0; }
     }
     .project-card {
-      background: rgba(255,255,255,var(--card-opacity));
+      background: rgba(11, 26, 43, calc(0.55 + var(--card-opacity) * 0.35));
       backdrop-filter: blur(var(--blur-amount-small)) saturate(var(--saturate-amount));
       -webkit-backdrop-filter: blur(var(--blur-amount-small)) saturate(var(--saturate-amount));
       border-radius: 12px;
       padding: 12px;
-      border: 1px solid rgba(255,255,255,var(--border-opacity-light));
+      border: 1px solid rgba(82, 137, 176, var(--border-opacity-light));
       position: relative;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
@@ -159,7 +182,7 @@
       left: -2px;
       right: -2px;
       bottom: 0;
-      background: linear-gradient(135deg, #f696c6, #fbb6d8, #fdd7e8);
+      background: linear-gradient(135deg, rgba(39, 211, 255, 0.2), rgba(15, 127, 242, 0.25), rgba(14, 45, 71, 0.5));
       border-radius: 16px;
       z-index: -1;
       opacity: 0;
@@ -174,27 +197,27 @@
     .project-name {
       font-weight: 600;
       font-size: 14px;
-      color: #333;
+      color: var(--text-main);
       margin-bottom: 5px;
     }
     .project-name button:hover {
-      background: rgba(246, 150, 198, 0.4) !important;
+      background: rgba(39, 211, 255, 0.22) !important;
       transform: scale(1.1);
     }
     .project-info {
       font-size: 11px;
-      color: #999;
+      color: var(--text-soft);
       margin-bottom: 6px;
     }
     .service-item {
-      background: rgba(255,255,255,var(--service-opacity));
+      background: rgba(7, 18, 31, calc(0.5 + var(--service-opacity) * 0.35));
       backdrop-filter: blur(var(--blur-amount-tiny)) saturate(var(--saturate-amount));
       -webkit-backdrop-filter: blur(var(--blur-amount-tiny)) saturate(var(--saturate-amount));
       padding: 8px 10px;
       margin: 4px 0;
       border-radius: 8px;
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      border: 1px solid rgba(255, 255, 255, var(--border-opacity-strong));
+      border: 1px solid rgba(80, 132, 165, var(--border-opacity-strong));
       min-height: auto;
       display: flex;
       flex-direction: column;
@@ -210,14 +233,14 @@
       left: -100%;
       width: 100%;
       height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      background: linear-gradient(90deg, transparent, rgba(39, 211, 255, 0.25), transparent);
       transition: left 0.5s;
     }
     .service-item:hover {
-      background: rgba(255,255,255,0.45);
+      background: rgba(16, 36, 55, 0.78);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
       transform: translateY(-2px);
-      border-color: rgba(255, 255, 255, 0.6);
+      border-color: rgba(39, 211, 255, 0.55);
     }
     .service-item:hover::before {
       left: 100%;
@@ -241,17 +264,18 @@
       z-index: 1000;
     }
     .modal-content {
-      background: white;
+      background: linear-gradient(180deg, rgba(11, 24, 39, 0.98), rgba(7, 18, 30, 0.98));
       border-radius: 16px;
       padding: 30px;
       max-width: 500px;
       width: 90%;
       box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      border: 1px solid rgba(58, 115, 153, 0.5);
     }
     .modal-title {
       font-size: 24px;
       font-weight: 700;
-      color: #333;
+      color: var(--accent);
       margin-bottom: 20px;
     }
     .input-group {
@@ -261,24 +285,26 @@
       display: block;
       font-size: 14px;
       font-weight: 600;
-      color: #666;
+      color: var(--text-soft);
       margin-bottom: 8px;
     }
     .input-field {
       width: 100%;
       padding: 12px 16px;
-      border: 2px solid #e5e7eb;
+      background: rgba(8, 21, 35, 0.88);
+      color: var(--text-main);
+      border: 1px solid rgba(70, 121, 155, 0.7);
       border-radius: 8px;
       font-size: 14px;
       transition: all 0.3s;
     }
     .input-field:focus {
       outline: none;
-      border-color: #f696c6;
-      box-shadow: 0 0 0 3px rgba(246,150,198,0.1);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(39, 211, 255, 0.16);
     }
     .btn-primary {
-      background: linear-gradient(135deg, #f696c6 0%, #fbb6d8 100%);
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
       color: white;
       border: none;
       padding: 12px 24px;
@@ -291,11 +317,11 @@
     }
     .btn-primary:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(246,150,198,0.4);
+      box-shadow: 0 6px 20px rgba(15, 127, 242, 0.45);
     }
     .btn-secondary {
-      background: #f3f4f6;
-      color: #666;
+      background: rgba(20, 34, 49, 0.95);
+      color: #b0c6d8;
       border: none;
       padding: 12px 24px;
       border-radius: 8px;
@@ -307,14 +333,14 @@
       margin-top: 10px;
     }
     .btn-secondary:hover {
-      background: #e5e7eb;
+      background: rgba(24, 43, 63, 0.98);
     }
     .add-account-btn {
-      background: rgba(255,255,255,0.2);
-      color: white;
-      border: 2px solid rgba(255,255,255,0.3);
+      background: rgba(12, 27, 42, 0.75);
+      color: var(--text-main);
+      border: 1px solid rgba(78, 132, 169, 0.6);
       padding: 10px 20px;
-      border-radius: 25px;
+      border-radius: 10px;
       cursor: pointer;
       font-size: 14px;
       font-weight: 600;
@@ -322,13 +348,14 @@
       box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     }
     .add-account-btn:hover {
-      background: rgba(255,255,255,0.3);
+      background: rgba(18, 38, 58, 0.9);
+      border-color: rgba(39, 211, 255, 0.6);
       transform: translateY(-2px);
     }
     input[type="range"] {
       -webkit-appearance: none;
       appearance: none;
-      background: rgba(255,255,255,0.3);
+      background: rgba(41, 72, 100, 0.7);
       border-radius: 10px;
       height: 6px;
       outline: none;
@@ -339,7 +366,7 @@
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background: white;
+      background: var(--accent);
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
@@ -347,7 +374,7 @@
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background: white;
+      background: var(--accent);
       cursor: pointer;
       border: none;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
@@ -414,7 +441,7 @@
     .loading {
       text-align: center;
       padding: 40px;
-      color: white;
+      color: var(--text-main);
       font-size: 16px;
     }
     .stats {
@@ -470,7 +497,7 @@
           <div 
             @click="copySecret" 
             style="background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px; word-break: break-all; cursor: pointer; transition: all 0.2s;"
-            @mouseover="$event.target.style.borderColor='#f696c6'"
+            @mouseover="$event.target.style.borderColor='#27d3ff'"
             @mouseout="$event.target.style.borderColor='#e9ecef'"
           >
             {{ suggestedSecret }}
@@ -493,7 +520,7 @@
         
         <button 
           @click="copySecret"
-          style="width: 100%; padding: 12px; background: #f696c6; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;"
+          style="width: 100%; padding: 12px; background: #27d3ff; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;"
         >
           📋 复制密钥到剪贴板
         </button>
@@ -503,7 +530,7 @@
     <!-- 首次设置密码界面 -->
     <div v-if="showSetPasswordModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
       <div style="background: white; padding: 40px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); max-width: 400px; width: 90%;">
-        <h2 style="text-align: center; color: #f696c6; margin-bottom: 10px;">🎉 欢迎使用</h2>
+        <h2 style="text-align: center; color: #27d3ff; margin-bottom: 10px;">🎉 欢迎使用</h2>
         <p style="text-align: center; color: #666; font-size: 14px; margin-bottom: 30px;">请设置管理员密码</p>
         <div style="margin-bottom: 20px;">
           <input 
@@ -511,7 +538,7 @@
             type="password" 
             placeholder="请输入密码（至少6位）"
             @keyup.enter="setAdminPassword"
-            style="width: 100%; padding: 12px; border: 2px solid #f696c6; border-radius: 8px; font-size: 14px; outline: none;"
+            style="width: 100%; padding: 12px; border: 2px solid #27d3ff; border-radius: 8px; font-size: 14px; outline: none;"
           />
         </div>
         <div style="margin-bottom: 20px;">
@@ -520,7 +547,7 @@
             type="password" 
             placeholder="请再次输入密码"
             @keyup.enter="setAdminPassword"
-            style="width: 100%; padding: 12px; border: 2px solid #f696c6; border-radius: 8px; font-size: 14px; outline: none;"
+            style="width: 100%; padding: 12px; border: 2px solid #27d3ff; border-radius: 8px; font-size: 14px; outline: none;"
           />
         </div>
         <div v-if="setPasswordError" style="color: #c00; font-size: 13px; margin-bottom: 15px; text-align: center;">
@@ -528,7 +555,7 @@
         </div>
         <button 
           @click="setAdminPassword"
-          style="width: 100%; padding: 12px; background: #f696c6; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;"
+          style="width: 100%; padding: 12px; background: #27d3ff; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;"
         >
           设置密码
         </button>
@@ -538,14 +565,14 @@
     <!-- 登录界面 -->
     <div v-if="showLoginModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
       <div style="background: white; padding: 40px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); max-width: 400px; width: 90%;">
-        <h2 style="text-align: center; color: #f696c6; margin-bottom: 30px;">🔐 管理员登录</h2>
+        <h2 style="text-align: center; color: #27d3ff; margin-bottom: 30px;">🔐 管理员登录</h2>
         <div style="margin-bottom: 20px;">
           <input 
             v-model="loginPassword" 
             type="password" 
             placeholder="请输入管理员密码"
             @keyup.enter="verifyPassword"
-            style="width: 100%; padding: 12px; border: 2px solid #f696c6; border-radius: 8px; font-size: 14px; outline: none;"
+            style="width: 100%; padding: 12px; border: 2px solid #27d3ff; border-radius: 8px; font-size: 14px; outline: none;"
           />
         </div>
         <div v-if="loginError" style="color: #c00; font-size: 13px; margin-bottom: 15px; text-align: center;">
@@ -553,7 +580,7 @@
         </div>
         <button 
           @click="verifyPassword"
-          style="width: 100%; padding: 12px; background: #f696c6; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;"
+          style="width: 100%; padding: 12px; background: #27d3ff; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;"
         >
           登录
         </button>
@@ -563,7 +590,7 @@
     <div v-if="isAuthenticated" class="container">
       <h1>🚀 Zeabur Monitor</h1>
       <div style="background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); padding: 15px 18px; border-radius: 12px; margin-bottom: 15px; font-size: 13px; border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-        <div style="font-weight: 700; margin-bottom: 8px; color: #f696c6;">💡 使用说明</div>
+        <div style="font-weight: 700; margin-bottom: 8px; color: #27d3ff;">💡 使用说明</div>
         <div style="line-height: 1.8; color: #555;">
           • 数据每90秒自动刷新
         </div>
@@ -603,7 +630,7 @@
       <div v-if="showLogsModal" class="modal-overlay" @click.self="showLogsModal = false" style="z-index: 2000;">
         <div style="background: #1e1e1e; border-radius: 16px; width: 90%; max-width: 900px; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
           <div style="padding: 16px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-            <h2 style="color: #f696c6; font-size: 16px; margin: 0;">📋 {{ logsModalTitle }}</h2>
+            <h2 style="color: #27d3ff; font-size: 16px; margin: 0;">📋 {{ logsModalTitle }}</h2>
             <button @click="showLogsModal = false" style="background: #444; color: #fff; border: none; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1;">×</button>
           </div>
           <div style="padding: 10px 20px; background: #264f78; color: #d4d4d4; font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap; flex-shrink: 0;">
@@ -617,7 +644,7 @@
             <pre v-else style="background: #252526; padding: 12px; border-radius: 8px; font-family: Consolas, Monaco, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; color: #d4d4d4; margin: 0; min-height: 100%;">{{ logsContent || '暂无日志' }}</pre>
           </div>
           <div style="padding: 12px 20px; border-top: 1px solid #333; text-align: right; flex-shrink: 0;">
-            <button @click="showLogsModal = false" style="padding: 8px 20px; background: #f696c6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">关闭</button>
+            <button @click="showLogsModal = false" style="padding: 8px 20px; background: #27d3ff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">关闭</button>
           </div>
         </div>
       </div>
@@ -666,7 +693,7 @@
           
           <!-- 添加新账号表单 -->
           <div style="border-top: 2px solid #e5e7eb; padding-top: 20px;">
-            <div style="font-weight: 600; margin-bottom: 15px; color: #f696c6;">➕ 添加新账号</div>
+            <div style="font-weight: 600; margin-bottom: 15px; color: #27d3ff;">➕ 添加新账号</div>
             
             <div class="input-group">
               <label class="input-label">账号名称</label>
@@ -785,37 +812,37 @@
       </div>
       
       <div v-if="accounts.length > 0" class="account-card" :style="{
-        background: isSummaryWhiteMode ? 'rgba(255, 255, 255, 0.95)' : 'rgba(246, 150, 198, 0.3)',
+        background: isSummaryWhiteMode ? 'rgba(20, 35, 52, 0.9)' : 'rgba(8, 22, 37, 0.92)',
         backdropFilter: 'blur(20px) saturate(180%)',
-        color: isSummaryWhiteMode ? '#333' : 'white',
-        border: isSummaryWhiteMode ? '1px solid rgba(0,0,0,0.1)' : '1px solid rgba(255,255,255,0.3)',
+        color: isSummaryWhiteMode ? '#d8edff' : '#ffffff',
+        border: isSummaryWhiteMode ? '1px solid rgba(101, 145, 179, 0.45)' : '1px solid rgba(39, 211, 255, 0.45)',
         transition: 'all 0.3s ease'
       }">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
           <h3 style="font-size: 20px; font-weight: 700;">✨ 总览</h3>
-          <button @click="toggleSummaryBackground" style="padding: 6px 12px; background: rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;" :style="{ color: isSummaryWhiteMode ? '#666' : 'white' }">
-            {{ isSummaryWhiteMode ? '🎨 粉底' : '⬜ 白底' }}
+          <button @click="toggleSummaryBackground" style="padding: 6px 12px; background: rgba(8,22,37,0.45); border: 1px solid rgba(39,211,255,0.35); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;" :style="{ color: isSummaryWhiteMode ? '#b8d7ec' : '#e7f6ff' }">
+            {{ isSummaryWhiteMode ? '🌑 暗面' : '🌗 亮面' }}
           </button>
         </div>
         <div class="stats">
-          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(0,0,0,0.1)' : '1px solid rgba(255,255,255,0.2)' }">
-            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#666' : 'rgba(255,255,255,0.9)' }">账号数</div>
+          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(101,145,179,0.38)' : '1px solid rgba(39,211,255,0.25)' }">
+            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#9ec0d8' : 'rgba(231,246,255,0.88)' }">账号数</div>
             <div class="stat-value" style="color: #4ade80;">{{ accounts.length }}</div>
           </div>
-          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(0,0,0,0.1)' : '1px solid rgba(255,255,255,0.2)' }">
-            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#666' : 'rgba(255,255,255,0.9)' }">项目总数</div>
+          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(101,145,179,0.38)' : '1px solid rgba(39,211,255,0.25)' }">
+            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#9ec0d8' : 'rgba(231,246,255,0.88)' }">项目总数</div>
             <div class="stat-value" style="color: #4ade80;">{{ totalProjects }}</div>
           </div>
-          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(0,0,0,0.1)' : '1px solid rgba(255,255,255,0.2)' }">
-            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#666' : 'rgba(255,255,255,0.9)' }">服务总数</div>
+          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(101,145,179,0.38)' : '1px solid rgba(39,211,255,0.25)' }">
+            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#9ec0d8' : 'rgba(231,246,255,0.88)' }">服务总数</div>
             <div class="stat-value" style="color: #4ade80;">{{ totalServices }}</div>
           </div>
-          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(0,0,0,0.1)' : '1px solid rgba(255,255,255,0.2)' }">
-            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#666' : 'rgba(255,255,255,0.9)' }">运行中</div>
+          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(101,145,179,0.38)' : '1px solid rgba(39,211,255,0.25)' }">
+            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#9ec0d8' : 'rgba(231,246,255,0.88)' }">运行中</div>
             <div class="stat-value" style="color: #4ade80;">{{ runningServices }}</div>
           </div>
-          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(0,0,0,0.1)' : '1px solid rgba(255,255,255,0.2)' }">
-            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#666' : 'rgba(255,255,255,0.9)' }">总费用</div>
+          <div class="stat-box" :style="{ background: 'transparent', border: isSummaryWhiteMode ? '1px solid rgba(101,145,179,0.38)' : '1px solid rgba(39,211,255,0.25)' }">
+            <div class="stat-label" :style="{ color: isSummaryWhiteMode ? '#9ec0d8' : 'rgba(231,246,255,0.88)' }">总费用</div>
             <div class="stat-value" style="color: #ef4444;">${{ totalCost.toFixed(2) }}</div>
           </div>
         </div>
@@ -867,13 +894,13 @@
                   @keyup.enter="saveProjectName(account, project)"
                   @keyup.esc="cancelEditProjectName(project)"
                   @blur="saveProjectName(account, project)"
-                  style="flex: 1; padding: 2px 6px; border: 2px solid #f696c6; border-radius: 4px; font-size: 13px; font-weight: 600; outline: none;"
+                  style="flex: 1; padding: 2px 6px; border: 2px solid #27d3ff; border-radius: 4px; font-size: 13px; font-weight: 600; outline: none;"
                   ref="projectNameInput"
                 />
                 <button 
                   v-if="!project.isEditing"
                   @click="startEditProjectName(project)"
-                  style="padding: 2px 6px; background: rgba(246, 150, 198, 0.2); border: 1px solid rgba(246, 150, 198, 0.4); border-radius: 4px; cursor: pointer; transition: all 0.2s; font-size: 12px;"
+                  style="padding: 2px 6px; background: rgba(39, 211, 255, 0.2); border: 1px solid rgba(39, 211, 255, 0.4); border-radius: 4px; cursor: pointer; transition: all 0.2s; font-size: 12px;"
                   title="重命名"
                 >
                   ✏️
@@ -962,26 +989,26 @@
       
       <!-- 项目地址和版本信息 -->
       <div style="text-align: center; padding: 30px 20px;">
-        <div style="display: inline-block; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 24px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(246,150,198,0.3); font-size: 13px; margin-bottom: 15px;">
+        <div style="display: inline-block; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 24px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(39, 211, 255,0.3); font-size: 13px; margin-bottom: 15px;">
           <span style="color: #666;">⭐ 项目地址：</span>
-          <a href="https://github.com/jiujiu532/zeabur-monitor" target="_blank" style="color: #f696c6; text-decoration: none; font-weight: 600; margin-left: 5px;">
+          <a href="https://github.com/jiujiu532/zeabur-monitor" target="_blank" style="color: #27d3ff; text-decoration: none; font-weight: 600; margin-left: 5px;">
             github.com/jiujiu532/zeabur-monitor
           </a>
         </div>
         
         <!-- 版本信息 -->
         <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
-          <div style="background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(246,150,198,0.2); min-width: 120px; text-align: center;">
-            <div style="font-size: 18px; font-weight: 700; color: #f696c6; margin-bottom: 4px;">{{ currentVersion }}</div>
+          <div style="background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(39, 211, 255,0.2); min-width: 120px; text-align: center;">
+            <div style="font-size: 18px; font-weight: 700; color: #27d3ff; margin-bottom: 4px;">{{ currentVersion }}</div>
             <div style="font-size: 11px; color: #999;">当前版本</div>
           </div>
           
-          <div style="background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(246,150,198,0.2); min-width: 120px; text-align: center;">
-            <div style="font-size: 18px; font-weight: 700; color: #f696c6; margin-bottom: 4px;">{{ latestVersion }}</div>
+          <div style="background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(39, 211, 255,0.2); min-width: 120px; text-align: center;">
+            <div style="font-size: 18px; font-weight: 700; color: #27d3ff; margin-bottom: 4px;">{{ latestVersion }}</div>
             <div style="font-size: 11px; color: #999;">最新版本</div>
           </div>
           
-          <div style="background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(246,150,198,0.2); min-width: 120px; text-align: center;">
+          <div style="background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: 1px solid rgba(39, 211, 255,0.2); min-width: 120px; text-align: center;">
             <div v-if="versionLoading" style="font-size: 14px; color: #999; margin-bottom: 4px;">⏳ 检测中</div>
             <div v-else-if="isNewVersionAvailable()" style="font-size: 14px; font-weight: 600; color: #ff9800; margin-bottom: 4px;">🔔 需要更新</div>
             <div v-else style="font-size: 14px; font-weight: 600; color: #4ade80; margin-bottom: 4px;">✓ 已是最新</div>
@@ -1014,7 +1041,7 @@
           addAccountError: '',
           addAccountSuccess: '',
           opacity: 39,
-          isSummaryWhiteMode: true,
+          isSummaryWhiteMode: false,
           expandedAccounts: {},
           // 加密密钥检查
           showEncryptionWarning: false,
@@ -1048,7 +1075,7 @@
       async mounted() {
         // 加载总览卡片背景模式设置
         const savedMode = localStorage.getItem('summary_background_mode');
-        this.isSummaryWhiteMode = savedMode === null ? true : savedMode === 'white';
+        this.isSummaryWhiteMode = savedMode === null ? false : (savedMode === 'light' || savedMode === 'white');
         
         // 获取版本信息（无论是否登录都获取）
         this.fetchVersionInfo();
@@ -1649,7 +1676,7 @@
         },
         toggleSummaryBackground() {
           this.isSummaryWhiteMode = !this.isSummaryWhiteMode;
-          localStorage.setItem('summary_background_mode', this.isSummaryWhiteMode ? 'white' : 'pink');
+          localStorage.setItem('summary_background_mode', this.isSummaryWhiteMode ? 'light' : 'dark');
         },
         toggleAccount(accountName) {
           this.expandedAccounts[accountName] = !this.expandedAccounts[accountName];
